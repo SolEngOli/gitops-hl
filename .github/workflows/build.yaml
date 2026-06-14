@@ -1,0 +1,48 @@
+name: build-and-push            # ← the label shown in the Actions UI (NOT the filename)
+
+on:                             # the trigger — the "when"
+  push:
+    branches: [ main ]          # a merge/push to main → build AND publish
+  pull_request:                 # a PR → build only, to prove it compiles (see push: below)
+
+permissions:                    # what THIS run's GITHUB_TOKEN is allowed to do
+  contents: read                # read your source
+  packages: write               # write the image to ghcr — the only elevated grant
+
+jobs:
+  build:
+    runs-on: ubuntu-latest      # the fresh, disposable runner
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+
+      - name: Set up the build engine (Buildx)
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}            # the user who triggered the run = you
+          password: ${{ secrets.GITHUB_TOKEN }}    # minted per-run, expires when the run ends
+
+      - name: Decide image tags + labels
+        id: meta                                   # name this step so the next one can read its output
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/hello-app
+          tags: |
+            type=ref,event=branch                  # → tag "main" on a main push
+            type=ref,event=pr                      # → tag "pr-N" on a PR
+            type=semver,pattern={{version}}        # → "0.1.0"  (only when you push a git tag)
+            type=semver,pattern={{major}}.{{minor}} # → "0.1"   (only when you push a git tag)
+            type=sha                               # → "sha-abc1234"  (the commit, always)
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Containerfile
+          push: ${{ github.event_name != 'pull_request' }}  # publish on push, NOT on PR
+          tags: ${{ steps.meta.outputs.tags }}              # read from the "meta" step
+          labels: ${{ steps.meta.outputs.labels }}
