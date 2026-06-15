@@ -2,8 +2,9 @@ name: build-and-push
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*.*.*'
   pull_request:
-    branches: [ 'v*' ]
 permissions:
   contents: read
   packages: write
